@@ -194,19 +194,19 @@ TwitJS.prototype.httpRequest = function(url, method, headers, body, callback) {
 				callback(rsp);
 			}
 			else if(404 === xht.status) {
-			    set_error(this.E_HTTP_404);
+			    this.setError(this.E_HTTP_404);
 			    callback(false);
 			}
 			else if(401 === xht.status) {
-				set_error(this.E_HTTP_401);
+				this.setError(this.E_HTTP_401);
 				callback(false);
 			}
 			else if(500 <= xht.status) {
-				set_error(this.E_HTTP_500);
+				this.setError(this.E_HTTP_500);
                 callback(false);
 			}
 			else {
-			    set_error(this.E_HTTP_UNKNOWN);
+			    this.setError(this.E_HTTP_UNKNOWN);
                 callback(false);
 			}
 		}  
@@ -222,8 +222,8 @@ TwitJS.prototype.httpRequest = function(url, method, headers, body, callback) {
                 xhr.setRequestHeader(h[0], h[1]);
             }
             else {
-                writelog("Invalid HTTP Request Header. Expected 2 parts, got " + h.length + ":");
-                writelog(h);
+                this.log("Invalid HTTP Request Header. Expected 2 parts, got " + h.length + ":");
+                this.log(h);
             }
         }
     }
