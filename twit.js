@@ -147,14 +147,22 @@ TwitJS = function(consumer_key, consumer_secret, options) {
 /* Object Prototype */
 
 /** Define errors */
-TwitJS.prototype.E_HTTP_404             = 1;
-TwitJS.prototype.E_HTTP_500             = 2;
-TwitJS.prototype.E_HTTP_401             = 4;
+TwitJS.prototype.E_HTTP_404             = 1; // HTTP 404 response
+TwitJS.prototype.E_HTTP_500             = 2; // HTTP 500 response
+TwitJS.prototype.E_HTTP_401             = 4; // HTTP 401 response
+TwitJS.prototype.E_HTTP_403             = 512; // HTTP 403 Unauthorized response
 TwitJS.prototype.E_HTTP_UNKNOWN         = 8; // Some other, unexpected HTTP error
-TwitJS.prototype.E_INVALID_METHOD       = 16;
+TwitJS.prototype.E_INVALID_METHOD       = 16; // Invalid API method
 TwitJS.prototype.E_ERRONEOUS_ERROR      = 32; // Internal error. Tried to set a non-int error code.
 TwitJS.prototype.E_AUTH_REQUIRED        = 64; // This method requires authorization.
 TwitJS.prototype.E_NOT_IMPLEMENTED_YET  = 128; // Method is TODO
+TwitJS.prototype.E_OOB_PIN_NAN          = 256; // Out-of-band PIN is not a number
+
+/** Define Auth states */
+TwitJS.prototype.AUTHSTATE_UNREQUESTED  = 0; // API has not been authed yet
+TwitJS.prototype.AUTHSTATE_PENDING      = 1; // Request tokens.
+TwitJS.prototype.AUTHSTATE_AUTHED       = 2; // Exchanged access tokens
+
 /** Meta */
 TwitJS.prototype.meta = {};
 TwitJS.prototype.meta.name = "Twit.js";
@@ -187,10 +195,8 @@ TwitJS.prototype.httpRequest = function(url, method, headers, body, callback) {
     var _this = this;
     var xhr = new XMLHttpRequest();
     xhr.onreadystatechange = function() {
-        
         switch(xhr.readyState) {
-
-            case 1: {
+            case 1:
                 // XHR open; ready to set headers & send payload
                 xhr.setRequestHeader("User-Agent", _this.opts.user_agent);
 
@@ -215,39 +221,41 @@ TwitJS.prototype.httpRequest = function(url, method, headers, body, callback) {
                     xhr.send();
                 }
                 break;
-            }
-            case 4: {
+            case 4:
                 // XHR response recieved; handle response:
-                if(200 === xhr.status) {
-                    var rsp = xhr.responseText;
-                
-                    // return 'true' for empty responses
-                    if('' === rsp) {
-                        rsp = true;
-                    }
-                    callback(rsp);
-                }
-                else if(404 === xhr.status) {
-                    _this._setError(_this.E_HTTP_404);
-                    callback(false);
-                }
-                else if(401 === xhr.status) {
-                    _this._setError(_this.E_HTTP_401);
-                    callback(false);
-                }
-                else if(500 <= xhr.status) {
-                    _this._setError(_this.E_HTTP_500);
-                    callback(false);
-                }
-                else {
-                    _this._setError(_this.E_HTTP_UNKNOWN);
-                    callback(false);
+                switch(xhr.status) {
+                    case 200:
+                        var rsp = xhr.responseText;
+                        // return 'true' for empty responses
+                        if('' === rsp) {
+                            rsp = true;
+                        }
+                        callback(rsp);
+                        break;
+                    case 404:
+                        _this._setError(_this.E_HTTP_404);
+                        callback(false);
+                        break;
+                    case 401:
+                        _this._setError(_this.E_HTTP_401);
+                        callback(false);
+                        break;
+                    case 403:
+                        _this._setError(_this.E_HTTP_403);
+                        callback(false);
+                        break;
+                    case 500:
+                        _this._setError(_this.E_HTTP_500);
+                        callback(false);
+                        break;
+                    default:
+                        _this._setError(_this.E_HTTP_UNKNOWN);
+                        callback(false);
+                        break;
                 }
                 break;
-            }
-            default: {
+            default:
                 break;
-            }
         }
     };
     
@@ -260,7 +268,9 @@ TwitJS.prototype.httpRequest = function(url, method, headers, body, callback) {
  *
  * @uses TwitJS.prototype.httpRequest()
  */
-TwitJS.prototype._oauthRequest = function(url, method, params, headers, body, callback) {
+TwitJS.prototype._oauthRequest = function(path, method, params, headers, callback) {
+
+    url = this._getApiMethodUrl(path);
 
     if(undefined === params) {
         params = [];
@@ -278,20 +288,65 @@ TwitJS.prototype._oauthRequest = function(url, method, params, headers, body, ca
     OAuth.completeRequest(message, this.oauth_accessor);
 
     this.httpRequest(
-     message.action,
-     message.method,
-     headers.concat(
-         [['Authorization', OAuth.getAuthorizationHeader("", message.parameters)],
-          ['Content-Type', 'application/x-www-form-urlencoded']]   
-     ),
-     // This includes the oauth_ parameters, which seems to cause Twitter to
-     // return a 401. So, I think these have to be formEncoded without the OAuth
-     // params. So maybe strip them out after calling completeRequest()?
-     OAuth.formEncode(message.parameters),
-     callback
+        message.action,
+        message.method,
+        headers.concat(
+            [['Authorization', OAuth.getAuthorizationHeader("", message.parameters)],
+             ['Content-Type', 'application/x-www-form-urlencoded']]
+        ),
+    // This includes the oauth_ parameters, which seems to cause Twitter to
+    // return a 401. So, I think these have to be formEncoded without the OAuth
+    // params. So maybe strip them out after calling completeRequest()?
+        OAuth.formEncode(message.parameters.filter(this._filterOauthParams)),
+        callback
     );
 };
 
+/**
+ * Filter <code>oauth_</code> parameters from a parameters array
+ *
+ * POST bodies must not contain <code>oauth_</code> params, so filter them.
+ *
+ * @param Array 2-length array parameter representation: ['name', 'value']
+ * @return bool False if the parameter name begins in 'oauth_'
+ */
+TwitJS.prototype._filterOauthParams = function(param) {
+    return !(param[0].substring(0, 6) === "oauth_");
+};
+
+/**
+ * Handles optional <code>opts</codes> parameters for OAuth methods
+ *
+ * Funtions should take options in <code>[[a,b][c,d]]</code> nested array form.
+ * That's a convention inherited/maintained from the underlying oauth.js.
+ *
+ * This function handles null input, and will also convert objects of
+ * the form <code>{a:b,c:d}</code> in nested arrays where necessary, since the
+ * latter is arguable more intuitive/expected.
+ *
+ * @param object opts The options input; either an array or key-val object.
+ * @return Array A nested array of options.
+ */
+TwitJS.prototype._handleMethodOptions = function(opts) {
+    if(undefined === opts || null === opts) {
+        return [];
+    }
+    else if("object" === typeof(opts) && (opts instanceof Array)) {
+        return opts;
+    }
+    else if("object" === typeof(opts)) {
+        var rtn = [];
+        for(var key in opts) {
+            if(opts.hasOwnProperty(key)) {
+                rtn.push([key, opts[key]]);
+            }
+        }
+        return rtn;
+    }
+    else {
+        return [];
+    }
+};
 
 /**
  * Generate the full URL for an API method
@@ -325,9 +380,7 @@ TwitJS.prototype._lastError = false;
 /**
  * Set the error code for the last error that occured in the system.
  *
- * Checks that you've set an integer, and sets the going-to-make-you-stab
- * -yourself E_ERRONEOUS_ERROR as the error if it's not. Oh, how you'll
- * laugh.
+ * @uses _setError() Sets E_ERRONEOUS_ERROR if you set an invalid error code.
  *
  * @private
  * @return void
@@ -352,6 +405,7 @@ TwitJS.prototype.getLastError = function() {
 
 /**
  * Immediately return an error if auth is required for a method
+ * @uses _setError() Sets E_AUTH_REQUIRED if the method requires user authorization
  * @return bool 
  * @private
  */
@@ -367,6 +421,7 @@ TwitJS.prototype._assertAuth = function() {
 
 /**
  * Set an E_NOT_IMPLEMENTED_YET error and return false
+ * @uses _setError() Sets E_NOT_IMPLEMENTED_YET if the calling method is todo.
  * @return false
  * @private
  */
@@ -387,7 +442,20 @@ TwitJS.prototype._notImplementedYet = function() {
 TwitJS.prototype.isAuthed = function() {
     return (undefined !== this.oauth_accessor.token 
          && undefined !== this.oauth_accessor.tokenSecret);
- };
+};
+
+TwitJS.prototype.authState = function() {
+    if(undefined !== this.oauth_accessor.token 
+    && undefined !== this.oauth_accessor.tokenSecret) {
+        return this.AUTHSTATE_UNREQUESTED;
+    }
+    else if(!this.oauth_accessor.token.match('^[0-9]+-')) {
+        return this.AUTHSTATE_PENDING;
+    }
+    else {
+        return this.AUTHSTATE_AUTHED;
+    }
+};
 
 /** 
  * Get a request token, before requesting user authorization
@@ -396,10 +464,10 @@ TwitJS.prototype.isAuthed = function() {
  */
 TwitJS.prototype._authRequestToken = function(cb) {
     this._oauthRequest(
-        this._getApiMethodUrl('oauth/request_token'),
+        'oauth/request_token',
         'POST',
         [],
-        [],
+        [['oauth_callback', this.opts.callback_url]],
         cb
     );
 };
@@ -408,11 +476,10 @@ TwitJS.prototype._authRequestToken = function(cb) {
  * To access protected resources, the user must be authorized:
  *
  * Will obtain a request token, and then generate a URL to proceed with auth
- *
- * @return A URL to redirect the user to; requesting authorization for the app
+ * @return The OAuth authorization URL to redirect the user to.
  */
 TwitJS.prototype.getAuthorizationUrl = function(cb) {
-    _this = this;
+    var _this = this;
     this._authRequestToken(function(rsp) {
         
         if(false === rsp) {
@@ -422,14 +489,16 @@ TwitJS.prototype.getAuthorizationUrl = function(cb) {
             var rsp = OAuth.decodeForm(rsp);
 
             // save the keys
-            this.oauth_accessor.token = OAuth.getParameter(rsp, "oauth_token");
-            this.oauth_accessor.tokenSecret = OAuth.getParameter(rsp, "oauth_token_secret");
+            _this.oauth_accessor.token 
+                = OAuth.getParameter(rsp, 'oauth_token');
+            _this.oauth_accessor.tokenSecret
+                = OAuth.getParameter(rsp, 'oauth_token_secret');
 
             // generate the authorize url
             return cb(
                 _this._getApiMethodUrl('oauth/authorize') 
-                + "?oauth_token="
-                + this.oauth_accessor.token
+                + '?oauth_token='
+                + _this.oauth_accessor.token
             );
         }
     });
@@ -437,7 +506,9 @@ TwitJS.prototype.getAuthorizationUrl = function(cb) {
 
 /**
  * Authenticate using ‘Connect with Twitter’. Only available for web apps.
- * @return A URL to redirect the user to; requesting authentication for the app
+ * @uses _setError() Sets E_DESKTOP_CANNOT_AUTHENTICATE if trying to authenticate
+ *    when you're running an out-of-band application.
+ * @return The authentication URL to redirect the user to; authentication for the app
  * @notimplementedyet
  */
 TwitJS.prototype.getAuthenticationUrl = function(cb) {
@@ -484,25 +555,97 @@ TwitJS.prototype.restoreAuthTokens = function(oauth_token, oauth_token_secret) {
  
 /**
  * Exchange an OAuth request token for an OAuth access token
- * @param oauth_verify The oauth_verify returned from authorize callback, or oob pin. 
+ * @param oauth_verify The oauth_verify param returned from authorize callback, or oob pin. 
  * @param cb Callback function to call once the token has been returned.
  * @private
  */
 TwitJS.prototype.authAccessToken = function(oauth_verifier, cb) {
-    
+    if('oob' === this.opts.callback_url && isNaN(parseInt(oauth_verifier))) {
+        this._setError(this.E_OOB_PIN_NAN);
+        cb(false);
+        return;
+    }
+    var _this = this;
+    this._oauthRequest(
+        'oauth/access_token',
+        'POST',
+        [['oauth_verifier', oauth_verifier]],
+        [],
+        function(rsp) {
+            if(false === rsp) {
+                return cb(false);
+            }
+            else {
+                var rsp = OAuth.decodeForm(rsp);
+                // override the request tokens for access tokens:
+                _this.oauth_accessor.token 
+                    = OAuth.getParameter(rsp, 'oauth_token');
+                _this.oauth_accessor.tokenSecret
+                    = OAuth.getParameter(rsp, 'oauth_token_secret');
+                    
+                return cb({
+                    user_id: OAuth.getParameter(rsp, 'user_id'),
+                    screen_name: OAuth.getParameter(rsp, 'screen_name')
+                });
+            }
+        }
+    );
 }; 
  
 /* User and Account */
 
 /* Timeline */
 
+/**
+ * <code>statuses/home_timeline</code>: The logged in user's main timeline view.
+ *
+ * @param object opts Optional parameters for the request in [[a,b],[c,d]] form.
+ * @param int opts.since_id
+ * @param int opts.max_id
+ * @param int opts.count
+ * @param int opts.page
+ * @param bool opts.trim_user
+ * @param bool opts.include_rts Include native Retweets
+ * @param bool opts.include_entities {link:http://dev.twitter.com/pages/tweet_entities}
+ * @param function cb Callback to fire when data request is completed
+ * @return undefined
+ * @public
+ */
+TwitJS.prototype.statusesHomeTimeline = function(opts, cb) {
+    if(this._assertAuth()) {
+        opts = this._handleMethodOptions(opts);
+        this._oauthRequest(
+            'statuses/home_timeline.json',
+            'GET',
+            opts,
+            [],
+            cb);
+    }
+    else {
+        cb(false);
+    }
+};
+
+TwitJS.prototype.statusesHomeTimeline = function(opts, cb) {
+    this._oauthRequest(
+        'statuses/home_timeline.json',
+        'GET',
+        opts,
+        [],
+        cb);
+};
+
+
 /* Statuses */
 
 TwitJS.prototype.statusUpdate = function(message, opts, cb) {
+    if(!('object' === typeof(opts) && (opts instanceof Array))) {
+        opts = [];
+    }
     this._oauthRequest(
-        this._getApiMethodUrl('oauth/request_token'),
+        'status/update',
         'POST',
-        [],
+        opts.concat([['status', message]]),
         [],
         cb
     );
