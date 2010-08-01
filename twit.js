@@ -37,7 +37,7 @@
  * author(s) of this and any shared components.
  *
  */
- 
+
 /**
  * Create a new TwitJS object instance
  *
@@ -60,27 +60,30 @@
  * @param function options.logging_function A custom function to handle log messages.
  *  Defaults to <code>console.log()</code> where available, else <code>alert()</code>
  *
- * @returns TwitJS the Twitter API wrapper object
+ * @returns TwitJS; the Twitter API wrapper object
  */
 TwitJS = function(consumer_key, consumer_secret, options) {
-        
-    var opts = {};
     
-    /** Handle override options */
-    if(!('object' === typeof(options) && (options instanceof Array))) {
-        options = {};
+    if(undefined === consumer_key) {
+        return false;
+    }
+    if(undefined === consumer_secret) {
+        return false;
     }
     
-    // TODO: Parametize these keys
-    opts.consumer_key = 'Ysy1NDD28o4jzeU2cfz1Fw'; //consumer_key;
-    opts.consumer_secret = 'R7qh8TnvgQXNVE1n9c6cIpV46ZrsJrd3upXgfNu6Y';// consumer_secret;
+    this.opts = {};
     
-    opts.callback_url = options.callback_url || 'oob';
-    opts.api_base = options.api_base ||  'api.twitter.com';
-    opts.use_ssl = !!options.use_ssl || true;
-    opts.api_verson = options.api_version || 1;
-    opts.user_agent = options.user_agent || this.meta.name+"/"+this.meta.version;
-    opts.debug = true === options.debug || false;
+    /** Handle override options */
+    if('object' !== typeof(options)) {
+       options = {};
+    }
+        
+    this.opts.callback_url = options.callback_url || 'oob';
+    this.opts.api_base = options.api_base ||  'api.twitter.com';
+    this.opts.use_ssl = !!options.use_ssl || true;
+    this.opts.api_verson = options.api_version || 1;
+    this.opts.user_agent = options.user_agent || this.meta.name+"/"+this.meta.version;
+    this.opts.debug = !!options.debug || false;
 
     /** 
      * Set up debug logging function. 
@@ -89,28 +92,34 @@ TwitJS = function(consumer_key, consumer_secret, options) {
      * You can also pass a custom logger function if you like, else defaults to
      * console.log, falling back to alert if you're running a very old setup.
      */
-    if(false === opts.debug) {
+    if(false === this.opts.debug) {
         this.log = function(o) { return; };
     }
-    else if(options.logging_function && 'function' === typeof(options.logging_function)) {
-        this.log = options.logging_function;
+    else if(undefined !== options.logging_function && 'function' === typeof(options.logging_function) ) {
+        this.log = function(o) {
+            options.logging_function(o);
+        };
     }
     else if(console && console.log) {
-        this.log = console.log;
+        this.log = function(o) {
+            console.log(o);
+        };
     }
     else {
-        this.log = alert;
+        this.log = function(o) {
+            alert(o);
+        };
     }
-    
+        
     /** Now that we have error reporting available, check lib prerequesites: */
-    if(undefined === OAuth) {
+    if("undefined" === typeof(OAuth)) {
         // Twit.js requires an OAuth library.
         // See http://oauth.googlecode.com/svn/code/javascript/
         this.log("OAuth object is missing. You must include oauth.js for Twit.js to function.");
         return false;
     }
-    
-    if(undefined === b64_hmac_sha1) {
+
+    if("undefined" === typeof(b64_hmac_sha1)) {
         // The OAuth library requires SHA-1.
         // See http://pajhome.org.uk/crypt/md5
         this.log("b64_hmac_sha1 function is missing. OAuth requires this. You must include sha1.js for Twit.js to function.");
@@ -121,21 +130,17 @@ TwitJS = function(consumer_key, consumer_secret, options) {
      * Set up an accessor object for the Twitter API, for use with the OAuth
      * wrapper.
      */
-    var oauth_accessor = {
-        consumerKey: opts.consumer_key,
-        consumerSecret: opts.consumer_secret,
+    this.oauth_accessor = {
+        consumerKey: consumer_key,
+        consumerSecret: consumer_secret,
         serviceProvider: {
             signatureMethod: "HMAC-SHA1",
-            requestTokenURL: get_api_method_url('oauth/request_token'),
-            userAuthorizationURL: get_api_method_url('oauth/authorize'),
-            accessTokenURL: get_api_method_url('oauth/access_token'),
-            echoURL: get_api_method_url('oauth/echo')
+            requestTokenURL: this._getApiMethodUrl('oauth/request_token'),
+            userAuthorizationURL: this._getApiMethodUrl('oauth/authorize'),
+            accessTokenURL: this._getApiMethodUrl('oauth/access_token'),
+            echoURL: this._getApiMethodUrl('oauth/echo')
         }
-    };
-    
-    // TODO: Remove debug logging
-    this.log(oauth_accessor);
-    
+    };    
     return this;
 };
 
@@ -156,11 +161,11 @@ TwitJS.prototype.meta.name = "Twit.js";
 TwitJS.prototype.meta.version = "v0.1";
 
 /** 
- * Simple wrapper to make an XmlHttpRequest 
+ * Simple wrapper to make an HTTP Request using XmlHttpRequest
  *
  * There's only one callback. In the event that the request fails,
- * this.last_error will be set and the error should be handled further down
- * the chain.
+ * <code>this.last_error</code> will be set and the error should be handled
+ * further down the chain.
  *
  * In non-browser environments, override this with a compatible wrapper around
  * whatever HTTP request object is available.
@@ -182,34 +187,33 @@ TwitJS.prototype.httpRequest = function(url, method, headers, body, callback) {
     
     var xhr = new XmlHttpRequest();
     xhr.onreadystatechange = function() {
-        
         if(4 === xht.readyState) {
-			if(200 === xht.status) {
-				var rsp = xht.responseText;
+            if(200 === xht.status) {
+                var rsp = xht.responseText;
                 
                 // return 'true' for empty responses
-				if('' === rsp) {
-				    rsp = true;
-				}
-				callback(rsp);
-			}
-			else if(404 === xht.status) {
-			    this.setError(this.E_HTTP_404);
-			    callback(false);
-			}
-			else if(401 === xht.status) {
-				this.setError(this.E_HTTP_401);
-				callback(false);
-			}
-			else if(500 <= xht.status) {
-				this.setError(this.E_HTTP_500);
+                if('' === rsp) {
+                    rsp = true;
+                }
+                callback(rsp);
+            }
+            else if(404 === xht.status) {
+                this.setError(this.E_HTTP_404);
                 callback(false);
-			}
-			else {
-			    this.setError(this.E_HTTP_UNKNOWN);
+            }
+            else if(401 === xht.status) {
+                this.setError(this.E_HTTP_401);
                 callback(false);
-			}
-		}  
+            }
+            else if(500 <= xht.status) {
+                this.setError(this.E_HTTP_500);
+                callback(false);
+            }
+            else {
+                this.setError(this.E_HTTP_UNKNOWN);
+                callback(false);
+            }
+        }
     };
     // open the request
     xhr.open(method, url);
@@ -229,7 +233,7 @@ TwitJS.prototype.httpRequest = function(url, method, headers, body, callback) {
     }
     
     // send the payload
-    if(null !== body && undefined !== body && '' !== body) {
+    if(undefined !== body && null !== body && '' !== body) {
         xhr.send(body);
     }
     else {
@@ -240,12 +244,16 @@ TwitJS.prototype.httpRequest = function(url, method, headers, body, callback) {
 /**
  * Make a signed OAuth request
  *
- * @uses TwitJS.prototype.http_request
+ * @uses TwitJS.prototype.httpRequest()
  */
 TwitJS.prototype._oauthRequest = function(url, method, params, headers, callback) {
 
     if(undefined === params) {
         params = [];
+    }
+    
+    if(!('object' === typeof(headers) && (headers instanceof Array))) {
+        headers = [];
     }
     
     var message = {
@@ -258,8 +266,10 @@ TwitJS.prototype._oauthRequest = function(url, method, params, headers, callback
     this.httpRequest(
      message.action,
      message.method,
-     [['Authorization', OAuth.getAuthorizationHeader("", message.parameters)],
-      ['Content-Type', 'application/x-www-form-urlencoded']],
+     headers.concat(
+         [['Authorization', OAuth.getAuthorizationHeader("", message.parameters)],
+          ['Content-Type', 'application/x-www-form-urlencoded']]   
+     ),
      OAuth.formEncode(message.parameters),
      callback
     );
@@ -307,7 +317,7 @@ TwitJS.prototype._lastError = false;
  */
 TwitJS.prototype._setError = function(err) {
     if(undefined === err || isNaN(parseInt(err))) {
-        writelog("Tried to set an error code that was invalid: " + err);
+        this.log("Tried to set an error code that was invalid: " + err);
         this._setError(this.E_ERRONEOUS_ERROR);
     }
     else {
@@ -320,7 +330,7 @@ TwitJS.prototype._setError = function(err) {
  * @public
  */
 TwitJS.prototype.getLastError = function() {
-    return last_error;
+    return this._lastError;
 };
 
 /**
@@ -406,7 +416,7 @@ TwitJS.prototype.getAuthorizationUrl = function(cb) {
                 + OAuth.getParameter(results, "oauth_token")
             );
         }
-    })
+    });
 };
 
 /**
@@ -430,14 +440,14 @@ TwitJS.prototype.getAuthenticationUrl = function(cb) {
  */     
 TwitJS.prototype.restoreAuth = function(oauth_token, oauth_token_secret, cb) {
     return this._notImplementedYet();
-}
+};
 
 /**
  * Get the authorized OAuth token and OAuth token secret for saving
  */
 TwitJS.prototype.getAuthTokens = function() {
     
-}
+};
  
 /* User and Account */
 
