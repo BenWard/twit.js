@@ -184,61 +184,75 @@ TwitJS.prototype.meta.version = "v0.1";
  * @public
  */
 TwitJS.prototype.httpRequest = function(url, method, headers, body, callback) {
-    
-    var xhr = new XmlHttpRequest();
+    var _this = this;
+    var xhr = new XMLHttpRequest();
     xhr.onreadystatechange = function() {
-        if(4 === xht.readyState) {
-            if(200 === xht.status) {
-                var rsp = xht.responseText;
-                
-                // return 'true' for empty responses
-                if('' === rsp) {
-                    rsp = true;
+        
+        switch(xhr.readyState) {
+
+            case 1: {
+                // XHR open; ready to set headers & send payload
+                xhr.setRequestHeader("User-Agent", _this.opts.user_agent);
+
+                // set method headers
+                if("object" === typeof(headers) && (headers instanceof Array) && headers.length > 0) {
+                    for(var i=0; h = headers[i]; i++) {
+                        if(2 === h.length) {
+                            xhr.setRequestHeader(h[0], h[1]);
+                        }
+                        else {
+                            _this.log("Invalid HTTP Request Header. Expected 2 parts, got " + h.length + ":");
+                            _this.log(h);
+                        }
+                    }
                 }
-                callback(rsp);
+
+                // send the payload
+                if(undefined !== body && null !== body && '' !== body) {
+                    xhr.send(body);
+                }
+                else {
+                    xhr.send();
+                }
+                break;
             }
-            else if(404 === xht.status) {
-                this.setError(this.E_HTTP_404);
-                callback(false);
+            case 4: {
+                // XHR response recieved; handle response:
+                if(200 === xhr.status) {
+                    var rsp = xhr.responseText;
+                
+                    // return 'true' for empty responses
+                    if('' === rsp) {
+                        rsp = true;
+                    }
+                    callback(rsp);
+                }
+                else if(404 === xhr.status) {
+                    _this._setError(_this.E_HTTP_404);
+                    callback(false);
+                }
+                else if(401 === xhr.status) {
+                    _this._setError(_this.E_HTTP_401);
+                    callback(false);
+                }
+                else if(500 <= xhr.status) {
+                    _this._setError(_this.E_HTTP_500);
+                    callback(false);
+                }
+                else {
+                    _this._setError(_this.E_HTTP_UNKNOWN);
+                    callback(false);
+                }
+                break;
             }
-            else if(401 === xht.status) {
-                this.setError(this.E_HTTP_401);
-                callback(false);
-            }
-            else if(500 <= xht.status) {
-                this.setError(this.E_HTTP_500);
-                callback(false);
-            }
-            else {
-                this.setError(this.E_HTTP_UNKNOWN);
-                callback(false);
+            default: {
+                break;
             }
         }
     };
+    
     // open the request
     xhr.open(method, url);
-    xhr.setRequestHeader("User Agent", opts.user_agent);
-    
-    // set method headers
-    if('object' === typeof(headers) && (headers instanceof Array)) {
-        for(i=0; h = headers[i]; i++) {
-            if(2 === h.length) {
-                xhr.setRequestHeader(h[0], h[1]);
-            }
-            else {
-                this.log("Invalid HTTP Request Header. Expected 2 parts, got " + h.length + ":");
-                this.log(h);
-            }
-        }
-    }
-    
-    // send the payload
-    if(undefined !== body && null !== body && '' !== body) {
-        xhr.send(body);
-    }
-    else {
-        xhr.send();
-    }
 };
 
 /**
@@ -261,7 +275,7 @@ TwitJS.prototype._oauthRequest = function(url, method, params, headers, callback
         action: url,
         parameters: params
     };
-    OAuth.completeRequest(message, oauth_accessor);
+    OAuth.completeRequest(message, this.oauth_accessor);
 
     this.httpRequest(
      message.action,
@@ -270,7 +284,7 @@ TwitJS.prototype._oauthRequest = function(url, method, params, headers, callback
          [['Authorization', OAuth.getAuthorizationHeader("", message.parameters)],
           ['Content-Type', 'application/x-www-form-urlencoded']]   
      ),
-     OAuth.formEncode(message.parameters),
+     "",//OAuth.formEncode(message.parameters),
      callback
     );
 };
@@ -379,7 +393,7 @@ TwitJS.prototype.isAuthed = function() {
 TwitJS.prototype._authRequestToken = function(cb) {
     this._oauthRequest(
         this._getApiMethodUrl('oauth/request_token'),
-        'post',
+        'POST',
         [],
         [],
         cb
@@ -403,6 +417,7 @@ TwitJS.prototype._authAccessToken = function(cb) {
  * @return A URL to redirect the user to; requesting authorization for the app
  */
 TwitJS.prototype.getAuthorizationUrl = function(cb) {
+    _this = this;
     this._authRequestToken(function(rsp) {
         
         if(false === rsp) {
@@ -411,9 +426,9 @@ TwitJS.prototype.getAuthorizationUrl = function(cb) {
         else {
             var rsp = OAuth.decodeForm(rsp);
             return cb(
-                get_api_method_url('oauth/authorize') 
+                _this._getApiMethodUrl('oauth/authorize') 
                 + "?oauth_token="
-                + OAuth.getParameter(results, "oauth_token")
+                + OAuth.getParameter(rsp, "oauth_token")
             );
         }
     });
