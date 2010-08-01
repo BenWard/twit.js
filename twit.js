@@ -260,7 +260,7 @@ TwitJS.prototype.httpRequest = function(url, method, headers, body, callback) {
  *
  * @uses TwitJS.prototype.httpRequest()
  */
-TwitJS.prototype._oauthRequest = function(url, method, params, headers, callback) {
+TwitJS.prototype._oauthRequest = function(url, method, params, headers, body, callback) {
 
     if(undefined === params) {
         params = [];
@@ -284,7 +284,10 @@ TwitJS.prototype._oauthRequest = function(url, method, params, headers, callback
          [['Authorization', OAuth.getAuthorizationHeader("", message.parameters)],
           ['Content-Type', 'application/x-www-form-urlencoded']]   
      ),
-     "",//OAuth.formEncode(message.parameters),
+     // This includes the oauth_ parameters, which seems to cause Twitter to
+     // return a 401. So, I think these have to be formEncoded without the OAuth
+     // params. So maybe strip them out after calling completeRequest()?
+     OAuth.formEncode(message.parameters),
      callback
     );
 };
@@ -379,10 +382,11 @@ TwitJS.prototype._notImplementedYet = function() {
  *   their behalf?
  * @return bool
  * @public
- * @todo Not Implemented Yet
+ * @todo 'hard' param, forcing a request to verify that auth state is still valid/check for revokation
  */
 TwitJS.prototype.isAuthed = function() {
-     return false;
+    return (undefined !== this.oauth_accessor.token 
+         && undefined !== this.oauth_accessor.tokenSecret);
  };
 
 /** 
@@ -401,15 +405,6 @@ TwitJS.prototype._authRequestToken = function(cb) {
 };
 
 /**
- * Exchange an OAuth request token for an OAuth access token
- * @param cb Callback function to call once the token has been returned.
- * @private
- */
-TwitJS.prototype._authAccessToken = function(cb) {
-    
-};
-
-/**
  * To access protected resources, the user must be authorized:
  *
  * Will obtain a request token, and then generate a URL to proceed with auth
@@ -425,10 +420,16 @@ TwitJS.prototype.getAuthorizationUrl = function(cb) {
         }
         else {
             var rsp = OAuth.decodeForm(rsp);
+
+            // save the keys
+            this.oauth_accessor.token = OAuth.getParameter(rsp, "oauth_token");
+            this.oauth_accessor.tokenSecret = OAuth.getParameter(rsp, "oauth_token_secret");
+
+            // generate the authorize url
             return cb(
                 _this._getApiMethodUrl('oauth/authorize') 
                 + "?oauth_token="
-                + OAuth.getParameter(rsp, "oauth_token")
+                + this.oauth_accessor.token
             );
         }
     });
@@ -451,24 +452,61 @@ TwitJS.prototype.getAuthenticationUrl = function(cb) {
 };
 
 /**
- * Restore a previously authorized user using saved tokens
- */     
-TwitJS.prototype.restoreAuth = function(oauth_token, oauth_token_secret, cb) {
-    return this._notImplementedYet();
+ * Get the authorized OAuth token and OAuth token secret for saving
+ *
+ * Your application should save these to restore a authorized user.
+ *
+ * @return An object containing the oauth_token and oauth_token_secret tokens.
+ */
+TwitJS.prototype.getAuthTokens = function() {
+    if(this._assertAuth()) {
+        return {
+            oauth_token: this.oauth_accessor.token,
+            oauth_token_secret: this.oauth_accessor.tokenSecret
+        };
+    }
+    else {
+        return false;
+    }
 };
 
 /**
- * Get the authorized OAuth token and OAuth token secret for saving
- */
-TwitJS.prototype.getAuthTokens = function() {
+ * Restore a previously authorized user using saved tokens
+ */     
+TwitJS.prototype.restoreAuthTokens = function(oauth_token, oauth_token_secret) {
+    this.oauth_accessor.token = oauth_token;
+    this.oauth_accessor.tokenSecret = oauth_token_secret;
     
+    // todo: hard check auth here?
+    // can we do that if not verified yet?
+    // take an extra param to do that?
 };
+ 
+/**
+ * Exchange an OAuth request token for an OAuth access token
+ * @param oauth_verify The oauth_verify returned from authorize callback, or oob pin. 
+ * @param cb Callback function to call once the token has been returned.
+ * @private
+ */
+TwitJS.prototype.authAccessToken = function(oauth_verifier, cb) {
+    
+}; 
  
 /* User and Account */
 
 /* Timeline */
 
 /* Statuses */
+
+TwitJS.prototype.statusUpdate = function(message, opts, cb) {
+    this._oauthRequest(
+        this._getApiMethodUrl('oauth/request_token'),
+        'POST',
+        [],
+        [],
+        cb
+    );
+};
 
 /* Direct Messages */
 
