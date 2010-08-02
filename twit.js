@@ -168,6 +168,13 @@ TwitJS.prototype.meta = {};
 TwitJS.prototype.meta.name = "Twit.js";
 TwitJS.prototype.meta.version = "v0.1";
 
+/** API Stats */
+TwitJS.prototype.api = {};
+TwitJS.prototype.api.ratelimit = {};
+TwitJS.prototype.api.ratelimit.limit = 1;
+TwitJS.prototype.api.ratelimit.remaining = 1;
+TwitJS.prototype.api.ratelimit.reset = Date.now();
+TwitJS.prototype.api.runtime = 0;
 /** 
  * Simple wrapper to make an HTTP Request using XmlHttpRequest
  *
@@ -225,6 +232,14 @@ TwitJS.prototype.httpRequest = function(url, method, headers, body, callback) {
                 // XHR response recieved; handle response:
                 switch(xhr.status) {
                     case 200:
+                    
+                        // We want to handle the response headers, for 
+                        // API limits and the like:
+                        // @todo: Fire this as a generic event instead?
+                        // We're not really event-based here, and not sure I
+                        // want to provoke an immediate rewrite.
+                        _this._handleResponseHeaders(xhr.getAllResponseHeaders());
+                        
                         var rsp = xhr.responseText;
                         // return 'true' for empty responses
                         if('' === rsp) {
@@ -349,6 +364,40 @@ TwitJS.prototype._handleMethodOptions = function(opts) {
 };
 
 /**
+ * Handles a block of HTTP response headers from all requests.
+ *
+ * This extracts known special X- headers (related to rate-limiting, and so on)
+ * and stuffs them into <code>this.api.*</code>.
+ *
+ * @param string headers Headers (one per line, ': ' key-value separated), as per
+ *   the output of <code>XMLHttpRequest::getAllResponseHeaders()</code>
+ * @return void
+ */
+TwitJS.prototype._handleResponseHeaders = function(headers) {
+    headers = headers.split("\n");
+    for(var i=0; i < headers.length && (h = headers[i]); i++) {
+        kv = h.split(': ');
+        switch(kv[0]) {
+            case 'X-Ratelimit-Limit':
+                this.api.ratelimit.limit = kv[1];
+                break;
+            case 'X-Ratelimit-Remaining':
+                this.api.ratelimit.remaining = kv[1];
+                break;
+            case 'X-Ratelimit-Reset':
+                this.api.ratelimit.reset = kv[1];
+                break;
+            case 'X-Runtime':
+                this.api.runtime = kv[1];
+                break;
+            default:
+                break;
+        }
+    }
+};
+
+
+/**
  * Generate the full URL for an API method
  * @param endpoint The method URL endpoint. e.g. "oauth/authenticate"
  * @returns string URL to the requested method name.
@@ -378,20 +427,38 @@ TwitJS.prototype._getApiMethodUrl = function(endpoint) {
 TwitJS.prototype._lastError = false;
 
 /**
- * Set the error code for the last error that occured in the system.
+ * An (optional) English error message describing the last error.
  *
- * @uses _setError() Sets E_ERRONEOUS_ERROR if you set an invalid error code.
+ * The wrapper may include descriptions of errors. Clients may reuse them, or
+ * use them for logging and debugging. Clients should not rely on these messages
+ * being user-facing-friend.
  *
  * @private
- * @return void
  */
-TwitJS.prototype._setError = function(err) {
+TwitJS.prototype._lastErrorMessage = "";
+
+/**
+ * Set the error code for the last error that occured in the system.
+ *
+ * @param int err The error code
+ * @param string message A standard message that could be used to display the error.
+ * @return void
+ *
+ * @uses _setError() Sets E_ERRONEOUS_ERROR if you set an invalid error code. 
+ *
+ * @private
+ */
+TwitJS.prototype._setError = function(err, message) {
+    if(undefined === message || null === message) {
+        message = "";
+    }
     if(undefined === err || isNaN(parseInt(err))) {
         this.log("Tried to set an error code that was invalid: " + err);
         this._setError(this.E_ERRONEOUS_ERROR);
     }
     else {
         this._lastError = err;
+        this._lastErrorMessage = message;
     }
 };
 
@@ -401,6 +468,14 @@ TwitJS.prototype._setError = function(err) {
  */
 TwitJS.prototype.getLastError = function() {
     return this._lastError;
+};
+
+/**
+ * @return string A description that could be used to display the error.
+ * @public
+ */
+TwitJS.prototype.getLastErrorMessage = function() {
+    return this._lastErrorMessage;
 };
 
 /**
@@ -430,23 +505,23 @@ TwitJS.prototype._notImplementedYet = function() {
     return false;
 };
 
-/* Section: Authorization */
+/** Section: Authorization */
 
 /**
  * Is the user authenticated and keys exchanged such that we can act on
  *   their behalf?
  * @return bool
+ * @uses authState() This is a shorthand for AUTHSTATE_AUTHED
  * @public
  * @todo 'hard' param, forcing a request to verify that auth state is still valid/check for revokation
  */
 TwitJS.prototype.isAuthed = function() {
-    return (undefined !== this.oauth_accessor.token 
-         && undefined !== this.oauth_accessor.tokenSecret);
+    return this.authState() === this.AUTHSTATE_AUTHED;
 };
 
 TwitJS.prototype.authState = function() {
-    if(undefined !== this.oauth_accessor.token 
-    && undefined !== this.oauth_accessor.tokenSecret) {
+    if(undefined === this.oauth_accessor.token 
+    && undefined === this.oauth_accessor.tokenSecret) {
         return this.AUTHSTATE_UNREQUESTED;
     }
     else if(!this.oauth_accessor.token.match('^[0-9]+-')) {
@@ -459,6 +534,7 @@ TwitJS.prototype.authState = function() {
 
 /** 
  * Get a request token, before requesting user authorization
+ *
  * @param cb Callback function to call once the token has been returned.
  * @private 
  */
@@ -506,6 +582,7 @@ TwitJS.prototype.getAuthorizationUrl = function(cb) {
 
 /**
  * Authenticate using ‘Connect with Twitter’. Only available for web apps.
+ *
  * @uses _setError() Sets E_DESKTOP_CANNOT_AUTHENTICATE if trying to authenticate
  *    when you're running an out-of-band application.
  * @return The authentication URL to redirect the user to; authentication for the app
@@ -548,16 +625,17 @@ TwitJS.prototype.restoreAuthTokens = function(oauth_token, oauth_token_secret) {
     this.oauth_accessor.token = oauth_token;
     this.oauth_accessor.tokenSecret = oauth_token_secret;
     
-    // todo: hard check auth here?
+    // @todo: hard check auth here?
     // can we do that if not verified yet?
     // take an extra param to do that?
 };
  
 /**
  * Exchange an OAuth request token for an OAuth access token
+ *
  * @param oauth_verify The oauth_verify param returned from authorize callback, or oob pin. 
  * @param cb Callback function to call once the token has been returned.
- * @private
+ * @public
  */
 TwitJS.prototype.authAccessToken = function(oauth_verifier, cb) {
     if('oob' === this.opts.callback_url && isNaN(parseInt(oauth_verifier))) {
@@ -590,16 +668,19 @@ TwitJS.prototype.authAccessToken = function(oauth_verifier, cb) {
             }
         }
     );
-}; 
+};
  
-/* User and Account */
+/** Section: User and Account */
+    
 
-/* Timeline */
+
+/** Section: Timeline */
 
 /**
  * <code>statuses/home_timeline</code>: The logged in user's main timeline view.
  *
- * @param object opts Optional parameters for the request in [[a,b],[c,d]] form.
+ * @link http://dev.twitter.com/doc/get/statuses/home_timeline
+ *
  * @param int opts.since_id
  * @param int opts.max_id
  * @param int opts.count
@@ -608,6 +689,7 @@ TwitJS.prototype.authAccessToken = function(oauth_verifier, cb) {
  * @param bool opts.include_rts Include native Retweets
  * @param bool opts.include_entities {link:http://dev.twitter.com/pages/tweet_entities}
  * @param function cb Callback to fire when data request is completed
+ *
  * @return undefined
  * @public
  */
@@ -626,29 +708,39 @@ TwitJS.prototype.statusesHomeTimeline = function(opts, cb) {
     }
 };
 
-TwitJS.prototype.statusesHomeTimeline = function(opts, cb) {
-    this._oauthRequest(
-        'statuses/home_timeline.json',
-        'GET',
-        opts,
-        [],
-        cb);
+TwitJS.prototype.statusesFriendsTimeline = function(opts, cb) {
+    if(this._assertAuth()) {
+        opts = this._handleMethodOptions(opts);
+        this._oauthRequest(
+            'statuses/home_timeline.json',
+            'GET',
+            opts,
+            [],
+            cb);
+    }
+    else {
+        cb(false);
+    }
 };
 
 
-/* Statuses */
+/** Section: Statuses */
 
 TwitJS.prototype.statusUpdate = function(message, opts, cb) {
-    if(!('object' === typeof(opts) && (opts instanceof Array))) {
-        opts = [];
+    if(this._assertAuth()) {
+        opts = this._handleMethodOptions(opts);
+    
+        this._oauthRequest(
+            'status/update',
+            'POST',
+            opts.concat([['status', message]]),
+            [],
+            cb
+        );
     }
-    this._oauthRequest(
-        'status/update',
-        'POST',
-        opts.concat([['status', message]]),
-        [],
-        cb
-    );
+    else {
+        cb(false);
+    }
 };
 
 /* Direct Messages */
