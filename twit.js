@@ -17,7 +17,7 @@
  * Redistributions in binary form must reproduce the above copyright notice, 
  * this list of conditions and the following disclaimer in the documentation 
  * and/or other materials provided with the distribution.
- * Neither the name of the <ORGANIZATION> nor the names of its contributors 
+ * Neither the name of TwitJS nor the names of its contributors 
  * may be used to endorse or promote products derived from this software  
  * without specific prior written permission.
  * 
@@ -55,10 +55,10 @@
  * @param bool options.use_ssl Communicate of HTTPS rather than HTTP. Default: true
  * @param int options.api_version The Twitter API version to interact with. Default: 1
  * @param string options.user_agent The HTTP user agent of your application.
- *  Defaults to "Twit.js/vX.X"
+ *   Defaults to "Twit.js/vX.X"
  * @param bool options.debug Enable debug logging within the object
  * @param function options.logging_function A custom function to handle log messages.
- *  Defaults to <code>console.log()</code> where available, else <code>alert()</code>
+ *   Defaults to <code>console.log()</code> where available, else <code>alert()</code>
  *
  * @returns TwitJS; the Twitter API wrapper object
  */
@@ -113,15 +113,19 @@ TwitJS = function(consumer_key, consumer_secret, options) {
         
     /** Now that we have error reporting available, check lib prerequesites: */
     if("undefined" === typeof(OAuth)) {
-        // Twit.js requires an OAuth library.
-        // See http://oauth.googlecode.com/svn/code/javascript/
-        this.log("OAuth object is missing. You must include oauth.js for Twit.js to function.");
+        /**
+         * Twit.js requires an OAuth library.
+         * @link http://oauth.googlecode.com/svn/code/javascript/
+         */
+        this.log("OAuth object is missing. You must include oauth.js for twit.js to function.");
         return false;
     }
 
     if("undefined" === typeof(b64_hmac_sha1)) {
-        // The OAuth library requires SHA-1.
-        // See http://pajhome.org.uk/crypt/md5
+        /**
+         * The OAuth library requires SHA-1.
+         * @link http://pajhome.org.uk/crypt/md5
+         */
         this.log("b64_hmac_sha1 function is missing. OAuth requires this. You must include sha1.js for Twit.js to function.");
         return false;
     }
@@ -903,12 +907,28 @@ TwitJS.prototype.statusesRetweetsOfUser = function(opts, cb) {
 
 /** Section: Statuses */
 
-TwitJS.prototype.statusUpdate = function(message, opts, cb) {
-    if(this._assertAuth()) {
+/**
+ * <code>statuses/update</code>: Post a tweet
+ *
+ * @link http://dev.twitter.com/doc/get/statuses/update
+ *
+ * @param int    opts.in_reply_to_status_id The ID of an existing status that the update is in reply to.
+ * @param float  opts.lat The latitude of the location this tweet refers to.
+ * @param float  opts.long The longitude of the location this tweet refers to.
+ * @param string opts.place_id A place in the world. IDs from <code>geo/reverse_geocode</code>.
+ * @param bool   opts.display_coordinates Display location for this tweet
+ * @param bool   opts.trim_user
+ * @param bool   opts.include_entities {link:http://dev.twitter.com/pages/tweet_entities}
+ * @param function cb Callback to fire when data request is completed
+ *
+ * @return undefined
+ * @public
+ */
+TwitJS.prototype.statusesUpdate = function(message, opts, cb) {
+    if(this._assertAuth()) {    
         opts = this._handleMethodOptions(opts);
-    
         this._oauthRequest(
-            'status/update',
+            'statuses/update.json',
             'POST',
             opts.concat([['status', message]]),
             [],
@@ -919,6 +939,95 @@ TwitJS.prototype.statusUpdate = function(message, opts, cb) {
         cb(false);
     }
 };
+
+/**
+ * <code>statuses/show</code>: Return a single tweet
+ *
+ * @link http://dev.twitter.com/doc/get/statuses/show
+ *
+ * @param string status_id Numerical ID of the tweet to return
+ * @param bool   opts.trim_user
+ * @param bool   opts.include_entities {link:http://dev.twitter.com/pages/tweet_entities}
+ * @param function cb Callback to fire when data request is completed
+ *
+ * @return undefined
+ * @public
+ */
+TwitJS.prototype.statusesShow = function(status_id, opts, cb) {
+    if(this._assertAuth()) {    
+        opts = this._handleMethodOptions(opts);
+        this._oauthRequest(
+            'statuses/show/'+status_id+'.json',
+            'GET',
+            opts.concat([['id', status_id]]),
+            [],
+            cb
+        );
+    }
+    else {
+        cb(false);
+    }
+};
+
+/**
+ * <code>statuses/destroy</code>: Delete a tweet
+ *
+ * @link http://dev.twitter.com/doc/get/statuses/destroy
+ *
+ * @param string status_id Numerical ID of the tweet to return
+ * @param bool   opts.trim_user
+ * @param bool   opts.include_entities {link:http://dev.twitter.com/pages/tweet_entities}
+ * @param function cb Callback to fire when data request is completed
+ *
+ * @return undefined
+ * @public
+ */
+TwitJS.prototype.statusesDestroy = function(status_id, opts, cb) {
+    if(this._assertAuth()) {    
+        opts = this._handleMethodOptions(opts);
+        this._oauthRequest(
+            'statuses/destroy/'+status_id+'.json',
+            'POST',
+            opts.concat([['id', status_id]]),
+            [],
+            cb
+        );
+    }
+    else {
+        cb(false);
+    }
+};
+
+/** Section: Favorites */
+
+/**
+ * <code>favorites/create</code>: Favorite a Tweet
+ *
+ * @link http://dev.twitter.com/doc/get/favorites/create
+ *
+ * @param string status_id The ID of a Twitter status to add to favorites
+ * @param bool opts.include_entities {link:http://dev.twitter.com/pages/tweet_entities}
+ * @param function cb Callback to fire when data request is completed
+ *
+ * @return undefined
+ * @public
+ */
+TwitJS.prototype.favoritesCreate = function(status_id, opts, cb) {
+    if(this._assertAuth()) {    
+        opts = this._handleMethodOptions(opts);
+        this._oauthRequest(
+            'favorites/create/'+status_id+'.json',
+            'POST',
+            opts.concat([['status_id', status_id]]),
+            [],
+            cb
+        );
+    }
+    else {
+        cb(false);
+    }
+};
+
 
 /* Direct Messages */
 
