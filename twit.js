@@ -286,14 +286,11 @@ TwitJS.prototype.httpRequest = function(url, method, headers, body, callback) {
 TwitJS.prototype._oauthRequest = function(path, method, params, headers, callback) {
 
     url = this._getApiMethodUrl(path);
-
-    if(undefined === params) {
-        params = [];
-    }
+    params = this._handleMethodOptions(params);
+    headers = this._handleMethodOptions(headers);
     
-    if(!('object' === typeof(headers) && (headers instanceof Array))) {
-        headers = [];
-    }
+    // TODO: Time offset related options should also get turned into
+    // HTTP caching headers, right?
     
     var message = {
         method: method,
@@ -302,6 +299,17 @@ TwitJS.prototype._oauthRequest = function(path, method, params, headers, callbac
     };
     OAuth.completeRequest(message, this.oauth_accessor);
 
+    if('POST' === method.toUpperCase()) {
+        var body = OAuth.formEncode(message.parameters.filter(this._filterOauthParams));
+    }
+    else {
+        var body = "";
+    }
+    
+    if('GET' === method.toUpperCase()) {
+        message.action = OAuth.addToURL(message.action, message.parameters.filter(this._filterOauthParams));
+    }
+
     this.httpRequest(
         message.action,
         message.method,
@@ -309,10 +317,7 @@ TwitJS.prototype._oauthRequest = function(path, method, params, headers, callbac
             [['Authorization', OAuth.getAuthorizationHeader("", message.parameters)],
              ['Content-Type', 'application/x-www-form-urlencoded']]
         ),
-    // This includes the oauth_ parameters, which seems to cause Twitter to
-    // return a 401. So, I think these have to be formEncoded without the OAuth
-    // params. So maybe strip them out after calling completeRequest()?
-        OAuth.formEncode(message.parameters.filter(this._filterOauthParams)),
+        body,
         callback
     );
 };
@@ -695,7 +700,6 @@ TwitJS.prototype.authAccessToken = function(oauth_verifier, cb) {
  */
 TwitJS.prototype.statusesHomeTimeline = function(opts, cb) {
     if(this._assertAuth()) {
-        opts = this._handleMethodOptions(opts);
         this._oauthRequest(
             'statuses/home_timeline.json',
             'GET',
@@ -708,11 +712,31 @@ TwitJS.prototype.statusesHomeTimeline = function(opts, cb) {
     }
 };
 
+/**
+ * <code>statuses/friends_timeline</code>: The logged in user's main timeline view.
+ *
+ * “This method is identical to statuses/home_timeline, except that this method
+ * will only include retweets if the include_rts parameter is set. The RSS and
+ * Atom responses will always include retweets as statuses prefixed with RT.”
+ *
+ * @link http://dev.twitter.com/doc/get/statuses/friends_timeline
+ *
+ * @param int opts.since_id
+ * @param int opts.max_id
+ * @param int opts.count
+ * @param int opts.page
+ * @param bool opts.trim_user
+ * @param bool opts.include_rts Include native Retweets
+ * @param bool opts.include_entities {link:http://dev.twitter.com/pages/tweet_entities}
+ * @param function cb Callback to fire when data request is completed
+ *
+ * @return undefined
+ * @public
+ */
 TwitJS.prototype.statusesFriendsTimeline = function(opts, cb) {
     if(this._assertAuth()) {
-        opts = this._handleMethodOptions(opts);
         this._oauthRequest(
-            'statuses/home_timeline.json',
+            'statuses/friends_timeline.json',
             'GET',
             opts,
             [],
@@ -723,6 +747,159 @@ TwitJS.prototype.statusesFriendsTimeline = function(opts, cb) {
     }
 };
 
+/**
+ * <code>statuses/user_timeline</code>: A user's timeline view.
+ *
+ * @link http://dev.twitter.com/doc/get/statuses/user_timeline
+ *
+ * @param int opts.user_id
+ * @param string opts.screen_name
+ * @param int opts.since_id
+ * @param int opts.max_id
+ * @param int opts.count
+ * @param int opts.page
+ * @param bool opts.trim_user
+ * @param bool opts.include_rts Include native Retweets
+ * @param bool opts.include_entities {link:http://dev.twitter.com/pages/tweet_entities}
+ * @param function cb Callback to fire when data request is completed
+ *
+ * @return undefined
+ * @public
+ */
+TwitJS.prototype.statusesUserTimeline = function(opts, cb) {
+    if(this._assertAuth()) {
+        this._oauthRequest(
+            'statuses/user_timeline.json',
+            'GET',
+            opts,
+            [],
+            cb);
+    }
+    else {
+        cb(false);
+    }
+};
+
+/**
+ * <code>statuses/mentions</code>: A user's mentions view.
+ *
+ * @link http://dev.twitter.com/doc/get/statuses/user_mentions
+ *
+ * @param int  opts.since_id
+ * @param int  opts.max_id
+ * @param int  opts.count
+ * @param int  opts.page
+ * @param bool opts.trim_user
+ * @param bool opts.include_rts Include native Retweets
+ * @param bool opts.include_entities {link:http://dev.twitter.com/pages/tweet_entities}
+ * @param function cb Callback to fire when data request is completed
+ *
+ * @return undefined
+ * @public
+ */
+TwitJS.prototype.statusesMentions = function(opts, cb) {
+    if(this._assertAuth()) {
+        this._oauthRequest(
+            'statuses/mentions.json',
+            'GET',
+            opts,
+            [],
+            cb);
+    }
+    else {
+        cb(false);
+    }
+};
+
+/**
+ * <code>statuses/retweeted_by_me</code>: The authorized user's Retweets.
+ *
+ * @link http://dev.twitter.com/doc/get/statuses/retweeted_by_me
+ *
+ * @param int  opts.since_id
+ * @param int  opts.max_id
+ * @param int  opts.count
+ * @param int  opts.page
+ * @param bool opts.trim_user
+ * @param bool opts.include_entities {link:http://dev.twitter.com/pages/tweet_entities}
+ * @param function cb Callback to fire when data request is completed
+ *
+ * @return undefined
+ * @public
+ */
+TwitJS.prototype.statusesRetweetedByUser = function(opts, cb) {
+    if(this._assertAuth()) {
+        this._oauthRequest(
+            'statuses/retweeted_by_me.json',
+            'GET',
+            opts,
+            [],
+            cb);
+    }
+    else {
+        cb(false);
+    }
+};
+
+/**
+ * <code>statuses/retweeted_to_me</code>: Retweets by authorized user's followees
+ *
+ * @link http://dev.twitter.com/doc/get/statuses/retweeted_to_me
+ *
+ * @param int  opts.since_id
+ * @param int  opts.max_id
+ * @param int  opts.count
+ * @param int  opts.page
+ * @param bool opts.trim_user
+ * @param bool opts.include_entities {link:http://dev.twitter.com/pages/tweet_entities}
+ * @param function cb Callback to fire when data request is completed
+ *
+ * @return undefined
+ * @public
+ */
+TwitJS.prototype.statusesRetweetedToUser = function(opts, cb) {
+    if(this._assertAuth()) {
+        this._oauthRequest(
+            'statuses/retweeted_to_me.json',
+            'GET',
+            opts,
+            [],
+            cb);
+    }
+    else {
+        cb(false);
+    }
+};
+
+/**
+ * <code>statuses/retweeted_to_me</code>: Retweets by authorized user's followees
+ *
+ * @link http://dev.twitter.com/doc/get/statuses/retweets_of_me
+ *
+ * @param int  opts.since_id
+ * @param int  opts.max_id
+ * @param int  opts.count
+ * @param int  opts.page
+ * @param bool opts.trim_user
+ * @param bool opts.include_entities {link:http://dev.twitter.com/pages/tweet_entities}
+ * @param function cb Callback to fire when data request is completed
+ *
+ * @return undefined
+ * @public
+ */
+TwitJS.prototype.statusesRetweetsOfUser = function(opts, cb) {
+    if(this._assertAuth()) {
+        this._oauthRequest(
+            'statuses/retweets_of_me.json',
+            'GET',
+            opts,
+            [],
+            cb);
+    }
+    else {
+        cb(false);
+    }
+};
 
 /** Section: Statuses */
 
