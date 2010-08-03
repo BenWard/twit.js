@@ -6,6 +6,25 @@ Requires: `oauth.js` and `sha1.js` from <http://oauth.googlecode.com/svn/code/ja
 
 It's also the core wrapper that powers [Twitgit](http://twitgit.benapps.net).
 
+## Usage
+
+Here, we pass `twttr.log` as the callback function:
+
+    twttr = new TwitJS(consumer_key, consumer_secret, { debug: true });
+    twttr.getAuthorizationUrl(twttr.log);
+
+Save you request tokens with `twttr.getAuthTokens()` and save them somewhere, then visit the authorization URL and return (either via oauth_callback, with an `oauth_verify` parameter, or manually with an `oob` pin.)
+
+    twttr = new TwitJS(consumer_key, consumer_secret, { debug: true });
+    twttr.restoreAuthTokens(request_token, request_token_secret);
+    twttr.authAccessToken(oauth_verifier, twttr.log);
+
+TwitJS will now have exchanged the request tokens for access tokens. call `twittr.getAuthTokens()` to save them away somewhere. Making calls for the user is easy enough:
+
+    twttr.statusesHomeTimeline({count: 5}, twttr.log);
+
+If you get `false` passed to your callback, that means something went wrong. Call `twttr.getLastError()` and `twttr.getLastErrorMessage()` to find out what.
+
 ## Repurposing
 
 Although the shipping code is designed for a browser-like world, you should be able to repurpose this for other JavaScript environments by swapping the `TwitJS.prototype.httpRequest()` function for a compatible one that uses your framework/environment of choice. You'll need to set error codes and call a couple of other functions in the right places, but should be pretty workable.
