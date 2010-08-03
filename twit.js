@@ -53,7 +53,6 @@
  *  this to point to a clone Twitter API instead of actual Twitter. Defaults to
  *  'api.twitter.com'.
  * @param bool options.use_ssl Communicate of HTTPS rather than HTTP. Default: true
- * @param int options.api_version The Twitter API version to interact with. Default: 1
  * @param string options.user_agent The HTTP user agent of your application.
  *   Defaults to "Twit.js/vX.X"
  * @param bool options.debug Enable debug logging within the object
@@ -81,7 +80,6 @@ TwitJS = function(consumer_key, consumer_secret, options) {
     this.opts.callback_url = options.callback_url || 'oob';
     this.opts.api_base = options.api_base ||  'api.twitter.com';
     this.opts.use_ssl = !!options.use_ssl || true;
-    this.opts.api_verson = options.api_version || 1;
     this.opts.user_agent = options.user_agent || this.meta.name+"/"+this.meta.version;
     this.opts.debug = !!options.debug || false;
 
@@ -269,7 +267,7 @@ TwitJS.prototype._oauthRequest = function(path, method, params, headers, callbac
     };
     OAuth.completeRequest(message, this.oauth_accessor);
 
-    if('POST' === method.toUpperCase()) {
+    if('POST' === method.toUpperCase() || 'DELETE' === method.toUpperCase()) {
         var body = OAuth.formEncode(message.parameters.filter(this._filterOauthParams));
     }
     else {
@@ -350,6 +348,8 @@ TwitJS.prototype._handleMethodOptions = function(opts) {
  * @param string body The response body
  * @param Function callback The function to pass the response body to
  * @return void
+ *
+ * @todo Process JSON responses to extract just the string part of the error message
  */
 TwitJS.prototype._handleHttpResponse = function(status, headers, body, callback) {
     this._handleResponseHeaders(headers);
@@ -366,23 +366,23 @@ TwitJS.prototype._handleHttpResponse = function(status, headers, body, callback)
             callback(body);
             break;
         case 404:
-            _this._setError(_this.E_HTTP_404, body);
+            this._setError(this.E_HTTP_404, body);
             callback(false);
             break;
         case 401:
-            _this._setError(_this.E_HTTP_401, body);
+            this._setError(this.E_HTTP_401, body);
             callback(false);
             break;
         case 403:
-            _this._setError(_this.E_HTTP_403, body);
+            this._setError(this.E_HTTP_403, body);
             callback(false);
             break;
         case 500:
-            _this._setError(_this.E_HTTP_500, body);
+            this._setError(this.E_HTTP_500, body);
             callback(false);
             break;
         default:
-            _this._setError(_this.E_HTTP_UNKNOWN, body);
+            this._setError(this.E_HTTP_UNKNOWN, body);
             callback(false);
             break;
     }
@@ -721,7 +721,7 @@ TwitJS.prototype.authAccessToken = function(oauth_verifier, cb) {
 TwitJS.prototype.statusesHomeTimeline = function(opts, cb) {
     if(this._assertAuth()) {
         this._oauthRequest(
-            'statuses/home_timeline.json',
+            '1/statuses/home_timeline.json',
             'GET',
             opts,
             [],
@@ -756,7 +756,7 @@ TwitJS.prototype.statusesHomeTimeline = function(opts, cb) {
 TwitJS.prototype.statusesFriendsTimeline = function(opts, cb) {
     if(this._assertAuth()) {
         this._oauthRequest(
-            'statuses/friends_timeline.json',
+            '1/statuses/friends_timeline.json',
             'GET',
             opts,
             [],
@@ -789,7 +789,7 @@ TwitJS.prototype.statusesFriendsTimeline = function(opts, cb) {
 TwitJS.prototype.statusesUserTimeline = function(opts, cb) {
     if(this._assertAuth()) {
         this._oauthRequest(
-            'statuses/user_timeline.json',
+            '1/statuses/user_timeline.json',
             'GET',
             opts,
             [],
@@ -820,7 +820,7 @@ TwitJS.prototype.statusesUserTimeline = function(opts, cb) {
 TwitJS.prototype.statusesMentions = function(opts, cb) {
     if(this._assertAuth()) {
         this._oauthRequest(
-            'statuses/mentions.json',
+            '1/statuses/mentions.json',
             'GET',
             opts,
             [],
@@ -850,7 +850,7 @@ TwitJS.prototype.statusesMentions = function(opts, cb) {
 TwitJS.prototype.statusesRetweetedByUser = function(opts, cb) {
     if(this._assertAuth()) {
         this._oauthRequest(
-            'statuses/retweeted_by_me.json',
+            '1/statuses/retweeted_by_me.json',
             'GET',
             opts,
             [],
@@ -880,7 +880,7 @@ TwitJS.prototype.statusesRetweetedByUser = function(opts, cb) {
 TwitJS.prototype.statusesRetweetedToUser = function(opts, cb) {
     if(this._assertAuth()) {
         this._oauthRequest(
-            'statuses/retweeted_to_me.json',
+            '1/statuses/retweeted_to_me.json',
             'GET',
             opts,
             [],
@@ -910,7 +910,7 @@ TwitJS.prototype.statusesRetweetedToUser = function(opts, cb) {
 TwitJS.prototype.statusesRetweetsOfUser = function(opts, cb) {
     if(this._assertAuth()) {
         this._oauthRequest(
-            'statuses/retweets_of_me.json',
+            '1/statuses/retweets_of_me.json',
             'GET',
             opts,
             [],
@@ -944,7 +944,7 @@ TwitJS.prototype.statusesUpdate = function(message, opts, cb) {
     if(this._assertAuth()) {    
         opts = this._handleMethodOptions(opts);
         this._oauthRequest(
-            'statuses/update.json',
+            '1/statuses/update.json',
             'POST',
             opts.concat([['status', message]]),
             [],
@@ -973,7 +973,7 @@ TwitJS.prototype.statusesShow = function(status_id, opts, cb) {
     if(this._assertAuth()) {    
         opts = this._handleMethodOptions(opts);
         this._oauthRequest(
-            'statuses/show/'+status_id+'.json',
+            '1/statuses/show/'+status_id+'.json',
             'GET',
             opts.concat([['id', status_id]]),
             [],
@@ -1002,7 +1002,7 @@ TwitJS.prototype.statusesDestroy = function(status_id, opts, cb) {
     if(this._assertAuth()) {    
         opts = this._handleMethodOptions(opts);
         this._oauthRequest(
-            'statuses/destroy/'+status_id+'.json',
+            '1/statuses/destroy/'+status_id+'.json',
             'POST',
             opts.concat([['id', status_id]]),
             [],
@@ -1014,6 +1014,126 @@ TwitJS.prototype.statusesDestroy = function(status_id, opts, cb) {
     }
 };
 
+/**
+ * <code>statuses/retweet</code>: Retweet a tweet
+ *
+ * @link http://dev.twitter.com/doc/get/statuses/retweet
+ *
+ * @param string status_id Numerical ID of the tweet to return
+ * @param bool   opts.trim_user
+ * @param bool   opts.include_entities {link:http://dev.twitter.com/pages/tweet_entities}
+ * @param function cb Callback to fire when data request is completed
+ *
+ * @return undefined
+ * @public
+ */
+TwitJS.prototype.statusesRetweet = function(status_id, opts, cb) {
+    if(this._assertAuth()) {    
+        opts = this._handleMethodOptions(opts);
+        this._oauthRequest(
+            '1/statuses/retweet/'+status_id+'.json',
+            'POST',
+            opts.concat([['id', status_id]]),
+            [],
+            cb
+        );
+    }
+    else {
+        cb(false);
+    }
+};
+
+/**
+ * <code>statuses/retweets</code>: Return retweets of a given tweet
+ *
+ * @link http://dev.twitter.com/doc/get/statuses/retweets
+ *
+ * @param string status_id Numerical ID of the retweeted tweet
+ * @param int    opts.count Number of records to retrieve. Max: 100
+ * @param bool   opts.trim_user
+ * @param bool   opts.include_entities {link:http://dev.twitter.com/pages/tweet_entities}
+ * @param function cb Callback to fire when data request is completed
+ *
+ * @return undefined
+ * @public
+ */
+TwitJS.prototype.statusesRetweets = function(status_id, opts, cb) {
+    if(this._assertAuth()) {    
+        opts = this._handleMethodOptions(opts);
+        this._oauthRequest(
+            '1/statuses/retweets/'+status_id+'.json',
+            'GET',
+            opts.concat([['id', status_id]]),
+            [],
+            cb
+        );
+    }
+    else {
+        cb(false);
+    }
+};
+
+/**
+ * <code>statuses/retweeted_by</code>: Up to 100 members who retweeted the status.
+  *
+ * @link http://dev.twitter.com/doc/get/statuses/retweeted_by
+ *
+ * @param string status_id Numerical ID of the retweeted status
+ * @param int    opts.count Number of records to retrieve. Max: 100
+ * @param int    opts.page Specifies the page of results to retrieve.
+ * @param bool   opts.trim_user
+ * @param bool   opts.include_entities {link:http://dev.twitter.com/pages/tweet_entities}
+ * @param function cb Callback to fire when data request is completed
+ *
+ * @return undefined
+ * @public
+ */
+TwitJS.prototype.statusesRetweetedBy = function(status_id, opts, cb) {
+    if(this._assertAuth()) {    
+        opts = this._handleMethodOptions(opts);
+        this._oauthRequest(
+            '1/statuses/'+status_id+'/retweeted_by.json',
+            'GET',
+            opts.concat([['id', status_id]]),
+            [],
+            cb
+        );
+    }
+    else {
+        cb(false);
+    }
+};
+
+/**
+ * <code>statuses/retweeted_by</code>: Up to 100 user ids who retweeted a status.
+  *
+ * @link http://dev.twitter.com/doc/get/statuses/retweeted_by/ids
+ *
+ * @param string status_id Numerical ID of the retweeted status
+ * @param int    opts.count Number of records to retrieve. Max: 100
+ * @param int    opts.page Specifies the page of results to retrieve.
+ * @param bool   opts.trim_user
+ * @param bool   opts.include_entities {link:http://dev.twitter.com/pages/tweet_entities}
+ * @param function cb Callback to fire when data request is completed
+ *
+ * @return undefined
+ * @public
+ */
+TwitJS.prototype.statusesRetweetedByIds = function(status_id, opts, cb) {
+    if(this._assertAuth()) {    
+        opts = this._handleMethodOptions(opts);
+        this._oauthRequest(
+            '1/statuses/'+status_id+'/retweeted_by/ids.json',
+            'GET',
+            opts.concat([['id', status_id]]),
+            [],
+            cb
+        );
+    }
+    else {
+        cb(false);
+    }
+};
 
 /** Section: Favorites */
 
@@ -1033,7 +1153,7 @@ TwitJS.prototype.favoritesCreate = function(status_id, opts, cb) {
     if(this._assertAuth()) {    
         opts = this._handleMethodOptions(opts);
         this._oauthRequest(
-            'favorites/create/'+status_id+'.json',
+            '1/favorites/create/'+status_id+'.json',
             'POST',
             opts.concat([['status_id', status_id]]),
             [],
