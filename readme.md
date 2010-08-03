@@ -25,7 +25,7 @@ TwitJS will now have exchanged the request tokens for access tokens. call `twitt
 
 ### Method Names
 
-The idea is to map direct to Twitter's names, which currently means that method names are cumbersome. `/statuses/home_timeline` becomes 'statusesHomeTimeline()`. I'm not a fan, but I also don't want to create a whole new Twitter API vocabulary.
+The idea is to map direct to Twitter's names, which currently means that method names are cumbersome. `/statuses/home_timeline` becomes `statusesHomeTimeline()`. I'm not a fan, but I also don't want to create a whole new Twitter API vocabulary.
 
 ### JSON
 
