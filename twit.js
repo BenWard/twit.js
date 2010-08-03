@@ -85,7 +85,7 @@ TwitJS = function(consumer_key, consumer_secret, options) {
     this.opts.user_agent = options.user_agent || this.meta.name+"/"+this.meta.version;
     this.opts.debug = !!options.debug || false;
 
-    /** 
+    /**     
      * Set up debug logging function. 
      *
      * Off by default, enable with opts.debug=true
