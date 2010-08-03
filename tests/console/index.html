@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<title>TwitJS Debuggering</title>
+<script src='lib/sha1.js'></script>
+<script src='lib/oauth.js'></script>
+<script src='../../twit.js'></script>
+<body>
+    <h1>Twit.js</h1>
+    <p>I'm not going to lie to you, this isn't really a test ‘console’ as a
+        nearly empty HTML file that loads <code>twit.js</code> along with its
+        prerequesites, so that you can test use from inside the Webkit console.</p>
+    <p>To get started, give this a go:</p>
+    <pre><code><samp>></samp> <kbd><var>twttr</var> = new TwitJS(<var>consumer_key</var>, <var>consumer_secret</var>, { debug: <var>true</var> });</kbd>
+<samp>></samp> <kbd><var>twttr</var>.getAuthorizationUrl(<var>twttr.log</var>);</kbd>
+<samp>></samp> <kbd><var>twttr</var>.authAccessToken(<var>oauth_oob/verifier</var>, <var>twttr.log</var>);</kbd>
+<samp>></samp> <kbd><var>twttr</var>.statusesHomeTimeline(null, <var>twttr.log</var>);</kbd></code></pre>
+    <p>That'll instantiate the object, get you an Authorization URL for your app,
+        which you should then visit in a new window, then return to the console
+        and verify using the OOB/verify token you obtained after authorization.</p>
+    <p><code>twttr.log</code> wraps around <code>console.log</code> by default;
+        determined by passing <code>{debug:true}</code> in the constructor.</p>
+</body>
