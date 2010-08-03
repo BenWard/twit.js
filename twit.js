@@ -196,14 +196,15 @@ TwitJS.prototype.api.runtime = 0;
  * @param string body The message body to send with the request
  * @param function callback The callback function to be called when the request is
  *   completed.
- * @returns string|bool The response text of a request (or bool:true) when
- *   successful, or false if the request fails.
+ * @returns void
  *
  * @see getLastError()
+ * @uses _handleHttpResponse() Pass the status code, headers and body back to TwitJS
  * @public
  */
 TwitJS.prototype.httpRequest = function(url, method, headers, body, callback) {
     var _this = this;
+    headers = this._handleMethodOptions(headers);
     var xhr = new XMLHttpRequest();
     xhr.onreadystatechange = function() {
         switch(xhr.readyState) {
@@ -212,15 +213,13 @@ TwitJS.prototype.httpRequest = function(url, method, headers, body, callback) {
                 xhr.setRequestHeader("User-Agent", _this.opts.user_agent);
 
                 // set method headers
-                if("object" === typeof(headers) && (headers instanceof Array) && headers.length > 0) {
-                    for(var i=0; h = headers[i]; i++) {
-                        if(2 === h.length) {
-                            xhr.setRequestHeader(h[0], h[1]);
-                        }
-                        else {
-                            _this.log("Invalid HTTP Request Header. Expected 2 parts, got " + h.length + ":");
-                            _this.log(h);
-                        }
+                for(var i=0; h = headers[i]; i++) {
+                    if(2 === h.length) {
+                        xhr.setRequestHeader(h[0], h[1]);
+                    }
+                    else {
+                        _this.log("Invalid HTTP Request Header. Expected 2 parts, got " + h.length + ":");
+                        _this.log(h);
                     }
                 }
 
@@ -233,45 +232,12 @@ TwitJS.prototype.httpRequest = function(url, method, headers, body, callback) {
                 }
                 break;
             case 4:
-                // XHR response recieved; handle response:
-                switch(xhr.status) {
-                    case 200:
-                    
-                        // We want to handle the response headers, for 
-                        // API limits and the like:
-                        // @todo: Fire this as a generic event instead?
-                        // We're not really event-based here, and not sure I
-                        // want to provoke an immediate rewrite.
-                        _this._handleResponseHeaders(xhr.getAllResponseHeaders());
-                        
-                        var rsp = xhr.responseText;
-                        // return 'true' for empty responses
-                        if('' === rsp) {
-                            rsp = true;
-                        }
-                        callback(rsp);
-                        break;
-                    case 404:
-                        _this._setError(_this.E_HTTP_404);
-                        callback(false);
-                        break;
-                    case 401:
-                        _this._setError(_this.E_HTTP_401);
-                        callback(false);
-                        break;
-                    case 403:
-                        _this._setError(_this.E_HTTP_403);
-                        callback(false);
-                        break;
-                    case 500:
-                        _this._setError(_this.E_HTTP_500);
-                        callback(false);
-                        break;
-                    default:
-                        _this._setError(_this.E_HTTP_UNKNOWN);
-                        callback(false);
-                        break;
-                }
+                _this._handleHttpResponse(
+                    xhr.status,
+                    xhr.getAllResponseHeaders(),
+                    xhr.responseText,
+                    callback
+                );
                 break;
             default:
                 break;
@@ -369,6 +335,56 @@ TwitJS.prototype._handleMethodOptions = function(opts) {
     }
     else {
         return [];
+    }
+};
+
+/**
+ * Handle the response of an HTTP Request
+ *
+ * The httpRequest method should invoke this when it completes a request.
+ *
+ * @param int status The HTTP status code of the response
+ * @param string|array All response headers. Either in [[,],[,]] array form, as
+ *   per input headers, or as a single string with one header per row, with headers
+ *   separated from values with ': '.
+ * @param string body The response body
+ * @param Function callback The function to pass the response body to
+ * @return void
+ */
+TwitJS.prototype._handleHttpResponse = function(status, headers, body, callback) {
+    this._handleResponseHeaders(headers);
+    
+    if(undefined === body || null === body) {
+        body = '';
+    }
+    
+    switch(status) {
+        case 200:
+            if('' === body) {
+                body = true;
+            }
+            callback(body);
+            break;
+        case 404:
+            _this._setError(_this.E_HTTP_404, body);
+            callback(false);
+            break;
+        case 401:
+            _this._setError(_this.E_HTTP_401, body);
+            callback(false);
+            break;
+        case 403:
+            _this._setError(_this.E_HTTP_403, body);
+            callback(false);
+            break;
+        case 500:
+            _this._setError(_this.E_HTTP_500, body);
+            callback(false);
+            break;
+        default:
+            _this._setError(_this.E_HTTP_UNKNOWN, body);
+            callback(false);
+            break;
     }
 };
 
@@ -997,6 +1013,7 @@ TwitJS.prototype.statusesDestroy = function(status_id, opts, cb) {
         cb(false);
     }
 };
+
 
 /** Section: Favorites */
 
