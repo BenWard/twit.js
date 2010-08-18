@@ -13,13 +13,13 @@ Here, we pass `twttr.log` as the callback function:
     twttr = new TwitJS(consumer_key, consumer_secret, { debug: true });
     twttr.getAuthorizationUrl(twttr.log);
 
-Save you request tokens with `twttr.getAuthTokens()` and save them somewhere, then visit the authorization URL and return (either via `oauth_callback`, with an `oauth_verify` parameter, or manually with an `oob` pin.)
+Get your request tokens with `twttr.getAuthTokens()` and save them somewhere, then visit the authorization URL and return (either via `oauth_callback`, with an `oauth_verify` parameter, or manually with an `oob` pin.)
 
     twttr = new TwitJS(consumer_key, consumer_secret, { debug: true });
     twttr.restoreAuthTokens(request_token, request_token_secret);
     twttr.authAccessToken(oauth_verifier, twttr.log);
 
-TwitJS will now have exchanged the request tokens for access tokens. call `twittr.getAuthTokens()` to save them away somewhere. Making calls for the user is easy enough:
+TwitJS will now have exchanged the request tokens for access tokens. Call `twittr.getAuthTokens()` to save them away somewhere. Making calls for the user is easy enough:
 
     twttr.statusesHomeTimeline({count: 5}, twttr.log);
 
